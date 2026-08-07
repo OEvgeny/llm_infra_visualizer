@@ -1663,9 +1663,9 @@ The frontend will parse this JSON to automatically slide the knobs in real-time.
 
 // 2. Chatbot Configuration (User Defaults)
 let chatbotConfig = {
-    endpoint: '',
-    apiKey: '',
-    model: ''
+    endpoint: localStorage.getItem('chat_api_endpoint') || '',
+    apiKey: localStorage.getItem('chat_api_key') || '',
+    model: localStorage.getItem('chat_api_model') || ''
 };
 
 // 3. Conversation Memory History
@@ -1693,6 +1693,11 @@ function initChatbot() {
 
     if (!chatTriggerBtn || !chatWindow) return;
 
+    // Load persisted configs into UI inputs
+    if (chatApiEndpoint) chatApiEndpoint.value = chatbotConfig.endpoint;
+    if (chatApiKey) chatApiKey.value = chatbotConfig.apiKey;
+    if (chatApiModel) chatApiModel.value = chatbotConfig.model;
+
     // Toggle Chat Window
     chatTriggerBtn.addEventListener('click', () => {
         chatWindow.classList.toggle('hidden');
@@ -1719,9 +1724,13 @@ function initChatbot() {
         const key = chatApiKey.value.trim();
         const model = chatApiModel.value.trim();
 
-        if (ep) chatbotConfig.endpoint = ep;
-        if (key) chatbotConfig.apiKey = key;
-        if (model) chatbotConfig.model = model;
+        chatbotConfig.endpoint = ep;
+        chatbotConfig.apiKey = key;
+        chatbotConfig.model = model;
+
+        localStorage.setItem('chat_api_endpoint', ep);
+        localStorage.setItem('chat_api_key', key);
+        localStorage.setItem('chat_api_model', model);
 
         chatSettingsPanel.classList.add('collapsed');
         
