@@ -2,6 +2,9 @@
 
 A first-principles, interactive playground and telemetry dashboard designed for LLM infrastructure engineers, developers, and researchers. This visualizer models hardware execution boundaries, memory wall paradoxes, network communication bottlenecks, and the multi-tier storage economics of serving Large Language Models (both Dense and Mixture of Experts architectures).
 
+![LLM Infra Visualizer Screenshot](./images/screenshot.png)
+
+
 ## Key Features
 
 ### 1. Interactive Roofline Model
