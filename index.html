@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 推論架構與 Token 經濟學互動教學面板 (LLM Infra Visualizer)</title>
+    
+    <!-- KaTeX CSS for premium math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    
+    <!-- Custom CSS Stylesheet -->
+    <link rel="stylesheet" href="index.css">
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- KaTeX Library & Auto-Render extension -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+</head>
+<body>
+
+    <header>
+        <div class="header-title-area">
+            <h1 data-i18n="page_title">LLM Infra Visualizer</h1>
+            <p data-i18n="page_subtitle">第一性原理 (First Principles) 硬體極限與 Token 經濟學動態模擬器</p>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <!-- Sleek Language Selector -->
+            <div class="lang-selector" id="lang-selector">
+                <button class="lang-btn active" data-lang="zh">中文</button>
+                <button class="lang-btn" data-lang="en">EN</button>
+            </div>
+            
+            <!-- Hardware Presets Segmented Control -->
+            <div class="preset-selector" id="hardware-presets">
+                <button class="preset-btn active" data-preset="blackwell">Blackwell NVL72</button>
+                <button class="preset-btn" data-preset="hopper">Hopper H100</button>
+                <button class="preset-btn" data-preset="ampere">Ampere A100</button>
+                <button class="preset-btn" data-preset="tpu">TPU v5e</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Scenario Presets Segmented Control -->
+    <div class="glass-panel" style="max-width: 1400px; margin: -1rem auto 1.5rem auto; padding: 0.75rem 1.25rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; border-radius: var(--radius-md);">
+        <span style="font-family: var(--font-outfit); font-weight: 700; font-size: 0.9rem; color: var(--secondary); text-transform: uppercase; letter-spacing: 0.05em;" data-i18n="scenario_title">動態理論場景：</span>
+        <div class="preset-selector" id="scenario-presets">
+            <button class="preset-btn" data-scenario="fast-mode" data-i18n="scenario_fast">極速低延遲解碼 (Fast Mode)</button>
+            <button class="preset-btn" data-scenario="long-context" data-i18n="scenario_long">極長上下文牆 (Long Context Wall)</button>
+            <button class="preset-btn active" data-scenario="high-throughput" data-i18n="scenario_high">高吞吐生產批次 (High Throughput)</button>
+            <button class="preset-btn" data-scenario="moe-collapse" data-i18n="scenario_collapse">MoE 跨機架崩潰 (MoE Collapse)</button>
+            <button class="preset-btn" data-scenario="moe-optimized" data-i18n="scenario_optimized">Pipelining 優化 (Comm Optimized)</button>
+        </div>
+    </div>
+
+    <main class="dashboard-grid">
+        
+        <!-- ==================== LEFT: CONTROL PANEL ==================== -->
+        <section class="glass-panel control-panel">
+            <h2 class="section-title" data-i18n="sec_hardware_title">硬體 & 晶片規格</h2>
+            <div class="control-group">
+                <!-- Peak FP8/FP16 TFLOPS -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_gpu_flops">單卡算力峰值</span>
+                        <span class="label-value" id="val-gpu-flops">2250 TFLOPS</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="gpu-flops" min="100" max="5000" step="50" value="2250">
+                        <input type="number" id="num-gpu-flops" class="num-input" min="100" max="5000" value="2250">
+                    </div>
+                </div>
+
+                <!-- HBM Bandwidth TB/s -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_gpu_bandwidth">HBM 記憶體頻寬</span>
+                        <span class="label-value" id="val-gpu-bandwidth">8.0 TB/s</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="gpu-bandwidth" min="0.5" max="15.0" step="0.1" value="8.0">
+                        <input type="number" id="num-gpu-bandwidth" class="num-input" min="0.5" max="15.0" step="0.1" value="8.0">
+                    </div>
+                </div>
+
+                <!-- GPU Cluster Size Telemetry Badge -->
+                <div class="cluster-badge-container" id="cluster-info-row" style="margin-top: 0.8rem; display: flex; justify-content: space-between; align-items: center; background: rgba(6, 182, 212, 0.08); border: 1px dashed rgba(6, 182, 212, 0.3); border-radius: 6px; padding: 8px 12px; transition: var(--transition-smooth);">
+                    <span class="label-title" style="font-size: 0.8rem; color: #06b6d4; font-weight: 700;" data-i18n="cluster_telemetry_label">自動推算 GPU 集群大小:</span>
+                    <span class="label-value" id="val-cluster-parallelism" style="font-size: 0.85rem; color: #06b6d4; font-weight: 800; font-family: var(--font-outfit);">8 張 GPU (TP-8)</span>
+                </div>
+            </div>
+
+            <h2 class="section-title" style="margin-top: 1rem;" data-i18n="sec_model_title">模型 & 精度規格</h2>
+            <div class="control-group">
+                <!-- Total Parameters -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_total_params">總參數量 (Total Params)</span>
+                        <span class="label-value" id="val-total-params">671 B</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="total-params" min="7" max="2000" step="1" value="671">
+                        <input type="number" id="num-total-params" class="num-input" min="7" max="2000" value="671">
+                    </div>
+                </div>
+
+                <!-- Active Parameters -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_active_params">激活參數量 (Active Params)</span>
+                        <span class="label-value" id="val-active-params">37 B</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="active-params" min="7" max="2000" step="1" value="37">
+                        <input type="number" id="num-active-params" class="num-input" min="7" max="2000" value="37">
+                    </div>
+                </div>
+
+                <!-- Parameter Precision bytes -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_precision">權重精度 (Precision)</span>
+                        <span class="label-value" id="val-precision">FP8 (1 Byte)</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="precision" min="0.5" max="2.0" step="0.5" value="1.0">
+                        <input type="number" id="num-precision" class="num-input" min="0.5" max="2.0" step="0.5" value="1.0">
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="section-title" style="margin-top: 1rem;" data-i18n="sec_inference_title">推論 & 場景參數</h2>
+            <div class="control-group">
+                <!-- Batch Size -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_batch_size">批次大小 Batch Size (B)</span>
+                        <span class="label-value" id="val-batch-size">128</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="batch-size" min="1" max="4096" step="1" value="128">
+                        <input type="number" id="num-batch-size" class="num-input" min="1" max="4096" value="128">
+                    </div>
+                </div>
+
+                <!-- Context Length -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_context_length">上下文長度 (Context Length / L)</span>
+                        <span class="label-value" id="val-context-length">200,000</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="context-length" min="1000" max="1000000" step="1000" value="200000">
+                        <input type="number" id="num-context-length" class="num-input" min="1000" max="1000000" value="200000">
+                    </div>
+                </div>
+
+                <!-- KV Cache Size per token -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_kv_token">KV Cache 大小 / Token</span>
+                        <span class="label-value" id="val-kv-token">2.0 KB</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="kv-token" min="0.2" max="512.0" step="0.1" value="2.0">
+                        <input type="number" id="num-kv-token" class="num-input" min="0.2" max="512.0" step="0.1" value="2.0">
+                    </div>
+                </div>
+
+                <!-- Prompt Cache Hit Rate -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_prompt_cache">提示詞快取命中率 (Prompt Cache Hit Rate)</span>
+                        <span class="label-value" id="val-prompt-cache">0 %</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="prompt-cache" min="0" max="100" step="5" value="0">
+                        <input type="number" id="num-prompt-cache" class="num-input" min="0" max="100" value="0">
+                    </div>
+                </div>
+            </div>
+
+            <h2 class="section-title" style="margin-top: 1rem;" data-i18n="sec_moe_title">MoE & 機架通訊參數</h2>
+            <div class="control-group">
+                <!-- Scale-out Bandwidth Decrease (gamma) -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_moe_gamma">機架外頻寬降幅 (gamma)</span>
+                        <span class="label-value" id="val-moe-gamma">8.0 倍慢</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="moe-gamma" min="1.0" max="16.0" step="0.5" value="8.0">
+                        <input type="number" id="num-moe-gamma" class="num-input" min="1.0" max="16.0" step="0.5" value="8.0">
+                    </div>
+                </div>
+
+                <!-- Active Experts (E_active) -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_moe_experts">激活專家數 (E_active)</span>
+                        <span class="label-value" id="val-moe-experts">8 個</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="moe-experts" min="1" max="64" step="1" value="8">
+                        <input type="number" id="num-moe-experts" class="num-input" min="1" max="64" value="8">
+                    </div>
+                </div>
+
+                <!-- Pipeline layers per stage (N_layer) -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_moe_layers">每個 Stage 層數 (N_layer)</span>
+                        <span class="label-value" id="val-moe-layers">2 層</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="moe-layers" min="1" max="30" step="1" value="2">
+                        <input type="number" id="num-moe-layers" class="num-input" min="1" max="30" value="2">
+                    </div>
+                </div>
+
+                <!-- Communication network efficiency (eta) -->
+                <div class="input-wrapper">
+                    <div class="label-row">
+                        <span class="label-title" data-i18n="label_moe_efficiency">通訊網路傳輸效率 (eta)</span>
+                        <span class="label-value" id="val-moe-efficiency">30 %</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="moe-efficiency" min="10" max="100" step="5" value="30">
+                        <input type="number" id="num-moe-efficiency" class="num-input" min="10" max="100" value="30">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== RIGHT: VISUALIZATION PANEL ==================== -->
+        <section class="visualization-panel">
+            
+            <!-- Real-time Dynamic Bottleneck Alert -->
+            <div class="glass-panel bottleneck-banner memory-bound" id="bottleneck-banner">
+                <div>
+                    <span class="bottleneck-led"></span>
+                    <span><span data-i18n="bottleneck_title">目前晶片運行瓶頸：</span><strong id="bottleneck-text">MEMORY BANDWIDTH BOUND (記憶體頻寬受限)</strong></span>
+                </div>
+                <div style="font-size: 0.8rem; opacity: 0.8;" id="bottleneck-ratio">
+                    Weight Fetch 佔 92.7% 耗時
+                </div>
+            </div>
+
+            <!-- Real-time MoE Network Comm Alert -->
+            <div class="glass-panel bottleneck-banner compute-bound" id="comm-banner" style="margin-top: -0.75rem;">
+                <div>
+                    <span class="bottleneck-led"></span>
+                    <span><span data-i18n="comm_title">跨機架通訊狀態：</span><strong id="comm-text">COMMUNICATION SAFE (跨機架通訊安全)</strong></span>
+                </div>
+                <div style="font-size: 0.8rem; opacity: 0.8;" id="comm-ratio">
+                    比值 t_scale-up / t_scale-out = 1.20 >= 1
+                </div>
+            </div>
+
+            <!-- Dashboard Performance Cards -->
+            <div class="metrics-row">
+                <div class="metric-card compute">
+                    <span class="metric-label" data-i18n="metric_t_compute">Step 計算耗時 (t_compute)</span>
+                    <div class="metric-number" id="metric-t-compute">4.21 <span class="metric-unit">ms</span></div>
+                </div>
+                <div class="metric-card memory">
+                    <span class="metric-label" data-i18n="metric_t_mem">Step 記憶體讀取耗時 (t_mem)</span>
+                    <div class="metric-number" id="metric-t-mem">90.43 <span class="metric-unit">ms</span></div>
+                </div>
+                <div class="metric-card crossover">
+                    <span class="metric-label" data-i18n="metric_b_optimal">最適權重平衡批次 (B_crossover)</span>
+                    <div class="metric-number" id="metric-b-optimal">2550 <span class="metric-unit">seqs</span></div>
+                </div>
+                <div class="metric-card caching">
+                    <span class="metric-label" data-i18n="metric_t_ttft">首字延遲 (TTFT)</span>
+                    <div class="metric-number" id="metric-t-ttft">120.00 <span class="metric-unit">ms</span></div>
+                </div>
+            </div>
+
+            <!-- Dynamic Cluster & Rack Topology Visualizer -->
+            <div class="glass-panel" style="padding: 1.5rem 1.25rem; margin-bottom: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                    <h3 class="section-title" style="border-left-color: var(--color-memory); margin-bottom: 0;" data-i18n="topology_title">集群機架拓撲與 NVLink 通訊頻寬視覺化</h3>
+                    <div class="preset-selector" id="topology-presets">
+                        <button class="preset-btn active" data-topo="dual" data-i18n="topo_preset_dual">雙機架混合 (NVLink + IB)</button>
+                        <button class="preset-btn" data-topo="single" data-i18n="topo_preset_single">單機架全互聯 (Superpod)</button>
+                        <button class="preset-btn" data-topo="multi" data-i18n="topo_preset_multi">多機架分散式 (Ethernet)</button>
+                    </div>
+                </div>
+                
+                <div class="topology-container">
+                    <svg viewBox="0 0 800 240" class="topo-svg topo-mode-dual" id="topo-svg">
+                        <defs>
+                            <linearGradient id="gpu-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.3" />
+                                <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.3" />
+                            </linearGradient>
+                        </defs>
+
+                        <!-- ==================== MODE 1: SINGLE RACK SUPERPOD ==================== -->
+                        <g id="topo-view-single">
+                            <!-- Rack A (Superpod Wide) -->
+                            <rect x="50" y="50" width="700" height="160" rx="12" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(59, 130, 246, 0.25)" stroke-width="2" />
+                            <text x="400" y="195" fill="#3b82f6" font-family="Outfit" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1.5">RACK A: NVLINK SUPERPOD (ULTRA LOW LATENCY - SCALE-UP)</text>
+                            
+                            <!-- High Speed Backplane NVLink lines connected to NVSWITCH Fabric -->
+                            <!-- GPU 1 -->
+                            <path d="M 105 82.5 L 325 100" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 105 82.5 L 325 100" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 2 -->
+                            <path d="M 235 82.5 L 325 110" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 235 82.5 L 325 110" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 3 -->
+                            <path d="M 105 152.5 L 325 130" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 105 152.5 L 325 130" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 4 -->
+                            <path d="M 235 152.5 L 325 140" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 235 152.5 L 325 140" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 5 -->
+                            <path d="M 565 82.5 L 475 100" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 565 82.5 L 475 100" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 6 -->
+                            <path d="M 695 82.5 L 475 110" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 695 82.5 L 475 110" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 7 -->
+                            <path d="M 565 152.5 L 475 130" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 565 152.5 L 475 130" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+                            
+                            <!-- GPU 8 -->
+                            <path d="M 695 152.5 L 475 140" fill="none" class="topo-nvlink-bus" stroke-width="2" />
+                            <path d="M 695 152.5 L 475 140" fill="none" class="topo-nvlink-bus-flow" stroke-width="1.5" stroke-dasharray="6, 10" />
+
+                            <!-- Central NVSwitch Fabric Panel -->
+                            <g>
+                                <rect x="325" y="80" width="150" height="75" rx="8" fill="rgba(6, 182, 212, 0.15)" stroke="#06b6d4" stroke-width="2" style="filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.4));" />
+                                <text x="400" y="112" fill="#06b6d4" font-family="Outfit" font-size="10" font-weight="800" text-anchor="middle" letter-spacing="1">NVSWITCH FABRIC</text>
+                                <text x="400" y="128" fill="#a5f3fc" font-family="Outfit" font-size="9" font-weight="600" text-anchor="middle">Non-blocking 7.2 TB/s</text>
+                            </g>
+                            
+                            <!-- GPU Nodes 1 to 8 inside single Rack -->
+                            <!-- Left Side -->
+                            <g class="topo-gpu" transform="translate(75, 65)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 1</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(205, 65)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 2</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(75, 135)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 3</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(205, 135)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 4</text>
+                            </g>
+                            
+                            <!-- Right Side -->
+                            <g class="topo-gpu" transform="translate(535, 65)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 5</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(665, 65)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 6</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(535, 135)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 7</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(665, 135)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 8</text>
+                            </g>
+                            
+                            <!-- Status Badge Superpod -->
+                            <g transform="translate(400, 30)">
+                                <rect x="-105" y="-12" width="210" height="24" rx="12" class="status-badge-bg badge-safe" />
+                                <text x="0" y="4" class="status-badge-txt" data-i18n="topo_badge_single_status">NVLINK: 1.8 TB/s (無阻塞)</text>
+                            </g>
+                        </g>
+
+                        <!-- ==================== MODE 2: DUAL RACK HYBRID (DEFAULT) ==================== -->
+                        <g id="topo-view-dual">
+                            <!-- Scale-out Cross-Rack Cable -->
+                            <path id="cross-rack-cable-bg" d="M 200 65 L 200 35 L 600 35 L 600 65" fill="none" stroke="rgba(255, 255, 255, 0.05)" stroke-width="8" stroke-linecap="round" />
+                            <path id="cross-rack-cable" d="M 200 65 L 200 35 L 600 35 L 600 65" fill="none" class="topo-link link-safe" stroke-width="4" stroke-linecap="round" />
+
+                            <!-- Rack A (Left) -->
+                            <rect x="80" y="50" width="240" height="160" rx="12" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1.5" />
+                            <text x="200" y="195" fill="#9ca3af" font-family="Outfit" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1">RACK A (SCALE-UP)</text>
+                            
+                            <!-- Rack A NVLink Bus -->
+                            <path d="M 140 90 L 260 90 L 260 155 L 140 155 Z M 140 90 L 260 155 M 260 90 L 140 155" fill="none" class="topo-nvlink" stroke-dasharray="4, 4" />
+
+                            <!-- GPU Nodes in Rack A -->
+                            <g class="topo-gpu" transform="translate(110, 70)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 1</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(230, 70)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 2</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(110, 130)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 3</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(230, 130)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 4</text>
+                            </g>
+                            
+                            <!-- Rack B (Right) -->
+                            <rect x="480" y="50" width="240" height="160" rx="12" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1.5" />
+                            <text x="600" y="195" fill="#9ca3af" font-family="Outfit" font-size="11" font-weight="700" text-anchor="middle" letter-spacing="1">RACK B (SCALE-UP)</text>
+                            
+                            <!-- Rack B NVLink Bus -->
+                            <path d="M 540 90 L 660 90 L 660 155 L 540 155 Z M 540 90 L 660 155 M 660 90 L 540 155" fill="none" class="topo-nvlink" stroke-dasharray="4, 4" />
+
+                            <!-- GPU Nodes in Rack B -->
+                            <g class="topo-gpu" transform="translate(510, 70)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 5</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(630, 70)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 6</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(510, 130)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 7</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(630, 130)">
+                                <rect width="60" height="35" rx="6" class="gpu-rect" />
+                                <text x="30" y="21" class="gpu-txt">GPU 8</text>
+                            </g>
+                            
+                            <!-- Dynamic Status Badge -->
+                            <g transform="translate(400, 35)">
+                                <rect x="-85" y="-12" width="170" height="24" rx="12" class="status-badge-bg badge-safe" id="topo-status-bg" />
+                                <text x="0" y="4" class="status-badge-txt" id="topo-status-text">NVLINK 1.8 TB/s</text>
+                            </g>
+                        </g>
+
+                        <!-- ==================== MODE 3: MULTI-RACK SCALE-OUT ==================== -->
+                        <g id="topo-view-multi">
+                            <!-- Core TOR Switch -->
+                            <rect x="355" y="105" width="90" height="46" rx="8" fill="rgba(31, 41, 55, 0.9)" stroke="rgba(239, 68, 68, 0.5)" stroke-width="2" id="topo-switch-rect" />
+                            <text x="400" y="127" fill="#ef4444" font-family="Outfit" font-size="11" font-weight="800" text-anchor="middle" id="topo-switch-title">TOR SWITCH</text>
+                            <text x="400" y="141" fill="#9ca3af" font-family="Outfit" font-size="8" text-anchor="middle" data-i18n="topo_switch_subtitle">Scale-out Node</text>
+
+                            <!-- Ethernet Links to Switch -->
+                            <path id="multi-link-a" d="M 125 105 L 355 120" fill="none" class="topo-multi-link link-collapse" stroke-width="3" />
+                            <path id="multi-link-b" d="M 255 105 L 355 125" fill="none" class="topo-multi-link link-collapse" stroke-width="3" />
+                            <path id="multi-link-c" d="M 545 105 L 445 125" fill="none" class="topo-multi-link link-collapse" stroke-width="3" />
+                            <path id="multi-link-d" d="M 675 105 L 445 120" fill="none" class="topo-multi-link link-collapse" stroke-width="3" />
+
+                            <!-- Rack A -->
+                            <rect x="40" y="45" width="130" height="150" rx="8" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" />
+                            <text x="105" y="180" fill="#6b7280" font-family="Outfit" font-size="9" font-weight="700" text-anchor="middle">RACK A (EP 1-2)</text>
+                            <g class="topo-gpu" transform="translate(75, 60)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 1</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(75, 100)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 2</text>
+                            </g>
+
+                            <!-- Rack B -->
+                            <rect x="190" y="45" width="130" height="150" rx="8" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" />
+                            <text x="255" y="180" fill="#6b7280" font-family="Outfit" font-size="9" font-weight="700" text-anchor="middle">RACK B (EP 3-4)</text>
+                            <g class="topo-gpu" transform="translate(225, 60)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 3</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(225, 100)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 4</text>
+                            </g>
+
+                            <!-- Rack C -->
+                            <rect x="480" y="45" width="130" height="150" rx="8" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" />
+                            <text x="545" y="180" fill="#6b7280" font-family="Outfit" font-size="9" font-weight="700" text-anchor="middle">RACK C (EP 5-6)</text>
+                            <g class="topo-gpu" transform="translate(515, 60)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 5</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(515, 100)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 6</text>
+                            </g>
+
+                            <!-- Rack D -->
+                            <rect x="630" y="45" width="130" height="150" rx="8" fill="rgba(13, 17, 28, 0.6)" stroke="rgba(255, 255, 255, 0.05)" stroke-width="1" />
+                            <text x="695" y="180" fill="#6b7280" font-family="Outfit" font-size="9" font-weight="700" text-anchor="middle">RACK D (EP 7-8)</text>
+                            <g class="topo-gpu" transform="translate(665, 60)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 7</text>
+                            </g>
+                            <g class="topo-gpu" transform="translate(665, 100)">
+                                <rect width="60" height="26" rx="4" class="gpu-rect" />
+                                <text x="30" y="16" class="gpu-txt" style="font-size:9px;">GPU 8</text>
+                            </g>
+
+                            <!-- Status Badge Multi -->
+                            <g transform="translate(400, 30)">
+                                <rect x="-105" y="-12" width="210" height="24" rx="12" class="status-badge-bg badge-collapse" id="topo-multi-badge-bg" />
+                                <text x="0" y="4" class="status-badge-txt" id="topo-multi-badge-txt" data-i18n="topo_badge_multi_status">ETHERNET: 網路頻寬嚴重瓶頸</text>
+                            </g>
+                        </g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Roofline Dynamic Diagram -->
+            <div class="glass-panel" style="padding: 1.5rem 1.25rem;">
+                <h3 class="section-title" data-i18n="chart_title">動態 Roofline 分析圖表</h3>
+                <div class="chart-container">
+                    <canvas id="rooflineChart"></canvas>
+                </div>
+            </div>
+
+            <!-- KV Cache Multi-Tier Storage & Offload Economics Calculator -->
+            <div class="glass-panel" style="padding: 1.5rem 1.25rem; margin-top: 1.25rem;">
+                <h3 class="section-title" style="border-left-color: var(--secondary); margin-bottom: 0.25rem;" data-i18n="kv_offload_title">KV Cache 多級存儲與移載經濟決策器</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.25rem;" data-i18n="kv_offload_desc">基於第一性原理折算：將快取保留在 HBM、移載至 DDR / SSD / HDD，或是直接刪除重算 (Remat) 的機會成本對比。</p>
+                
+                <!-- Retention Time Slider -->
+                <div class="input-wrapper" style="margin-bottom: 1.25rem; background: rgba(255,255,255,0.02); padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,0.03);">
+                    <div class="label-row">
+                        <span class="label-title" style="color: var(--secondary); font-weight: 700;" data-i18n="label_retention_time">快取閒置保存時間 (Retention Time)</span>
+                        <span class="label-value" id="val-retention-time" style="color: var(--secondary); font-weight: 700;">5 分鐘</span>
+                    </div>
+                    <div class="slider-row">
+                        <input type="range" id="retention-time" min="0" max="5" step="1" value="3">
+                        <span id="retention-time-display" style="font-family: var(--font-outfit); font-size: 0.85rem; color: var(--text-muted); min-width: 70px; text-align: right;">300 s</span>
+                    </div>
+                </div>
+
+                <!-- Optimal Decision Banner -->
+                <div class="decision-badge" id="optimal-decision-badge">
+                    <span data-i18n="optimal_strategy">推薦最優策略：</span>
+                    <strong id="optimal-strategy-text">FLASH/SSD OFFLOAD</strong>
+                </div>
+
+                <!-- Cost Comparison Cards -->
+                <div class="offload-grid">
+                    <!-- 1. Rematerialization -->
+                    <div class="offload-card" id="card-opt-remat">
+                        <div class="offload-meta">
+                            <span class="offload-name" data-i18n="opt_remat">1. Recompute (重新計算)</span>
+                            <span class="offload-cost" id="cost-val-remat">$0.00</span>
+                        </div>
+                        <div class="cost-bar-container">
+                            <div class="cost-bar-fill bar-retrieve" id="bar-ret-remat" style="width: 0%;"></div>
+                            <div class="cost-bar-fill bar-hold" id="bar-hold-remat" style="width: 0%;"></div>
+                        </div>
+                        <div class="offload-details" id="details-remat">重算延遲: -- | 空間持有: --</div>
+                    </div>
+
+                    <!-- 2. Keep in HBM -->
+                    <div class="offload-card" id="card-opt-hbm">
+                        <div class="offload-meta">
+                            <span class="offload-name" data-i18n="opt_hbm">2. Keep in HBM (保留)</span>
+                            <span class="offload-cost" id="cost-val-hbm">$0.00</span>
+                        </div>
+                        <div class="cost-bar-container">
+                            <div class="cost-bar-fill bar-retrieve" id="bar-ret-hbm" style="width: 0%;"></div>
+                            <div class="cost-bar-fill bar-hold" id="bar-hold-hbm" style="width: 0%;"></div>
+                        </div>
+                        <div class="offload-details" id="details-hbm">讀取延遲: -- | 空間持有: --</div>
+                    </div>
+
+                    <!-- 3. DDR Host Offload -->
+                    <div class="offload-card" id="card-opt-ddr">
+                        <div class="offload-meta">
+                            <span class="offload-name" data-i18n="opt_ddr">3. DDR Host Offload (移載)</span>
+                            <span class="offload-cost" id="cost-val-ddr">$0.00</span>
+                        </div>
+                        <div class="cost-bar-container">
+                            <div class="cost-bar-fill bar-retrieve" id="bar-ret-ddr" style="width: 0%;"></div>
+                            <div class="cost-bar-fill bar-hold" id="bar-hold-ddr" style="width: 0%;"></div>
+                        </div>
+                        <div class="offload-details" id="details-ddr">讀取延遲: -- | 空間持有: --</div>
+                    </div>
+
+                    <!-- 4. Flash/SSD Offload -->
+                    <div class="offload-card" id="card-opt-ssd">
+                        <div class="offload-meta">
+                            <span class="offload-name" data-i18n="opt_ssd">4. Flash/SSD Offload (移載)</span>
+                            <span class="offload-cost" id="cost-val-ssd">$0.00</span>
+                        </div>
+                        <div class="cost-bar-container">
+                            <div class="cost-bar-fill bar-retrieve" id="bar-ret-ssd" style="width: 0%;"></div>
+                            <div class="cost-bar-fill bar-hold" id="bar-hold-ssd" style="width: 0%;"></div>
+                        </div>
+                        <div class="offload-details" id="details-ssd">讀取延遲: -- | 空間持有: --</div>
+                    </div>
+
+                    <!-- 5. HDD Offload -->
+                    <div class="offload-card" id="card-opt-hdd">
+                        <div class="offload-meta">
+                            <span class="offload-name" data-i18n="opt_hdd">5. HDD Offload (慢速移載)</span>
+                            <span class="offload-cost" id="cost-val-hdd">$0.00</span>
+                        </div>
+                        <div class="cost-bar-container">
+                            <div class="cost-bar-fill bar-retrieve" id="bar-ret-hdd" style="width: 0%;"></div>
+                            <div class="cost-bar-fill bar-hold" id="bar-hold-hdd" style="width: 0%;"></div>
+                        </div>
+                        <div class="offload-details" id="details-hdd">讀取延遲: -- | 空間持有: --</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== BOTTOM: INTERACTIVE EDUCATIONAL SECTION ==================== -->
+        <section class="edu-section">
+            <h2 class="section-title" style="border-left-color: var(--secondary); font-size: 1.5rem;" data-i18n="edu_section_title">大模型硬體理論核心庫</h2>
+            
+            <div class="edu-grid">
+                <!-- Card 1 -->
+                <div class="edu-card">
+                    <h3 data-i18n="card1_title">1. Roofline Model 與推論瓶頸</h3>
+                    <p data-i18n="card1_p">解碼階段 (Decode Step) 是自迴歸生成的核心。每生成一個 Token，系統必須在「計算時間」與「記憶體加載時間」兩者間取最大值，這在晶片級限制了效能。</p>
+                    <div class="formula-display">
+                        $$t_{\text{step}} \ge \max\left( \frac{2 \cdot B \cdot P_{\text{active}}}{F}, \frac{P_{\text{total}} \cdot W + B \cdot L \cdot K}{BW} \right)$$
+                    </div>
+                    <div class="author-quote" data-i18n="card1_quote">「如果你不把許多使用者 Batch 在一起，你得到的經濟效益會差上千倍。」— Reiner Pope</div>
+                </div>
+
+                <!-- Card 2 -->
+                <div class="edu-card">
+                    <h3 data-i18n="card2_title">2. 最適權重平衡 Batch 點推導</h3>
+                    <p data-i18n="card2_p">當不考慮 KV Cache 且算力時間等於記憶體讀取權重的時間時，晶片的使用效率（MFU）最高。此時的臨界 Batch Size ($B_{\text{optimal}}$) 取決於硬體的算力頻寬比與稀疏度。</p>
+                    <div class="formula-display">
+                        $$B_{\text{optimal}} \approx \left( \frac{F}{BW} \right) \cdot \left( \frac{P_{\text{total}}}{P_{\text{active}}} \right) \cdot \left( \frac{W}{2} \right)$$
+                    </div>
+                    <div class="author-quote" data-i18n="card2_quote">「在現代 GPU 上，算力/頻寬比（FLOPs/Bandwidth）通常維持在非常穩定的 300 左右。」— Reiner Pope</div>
+                </div>
+
+                <!-- Card 3 -->
+                <div class="edu-card">
+                    <h3 data-i18n="card3_title">3. 機架通訊與 MoE 部署限制</h3>
+                    <p data-i18n="card3_p">EP（專家平行）將不同的 MoE 專家分發在不同 GPU 上。但這引發了全對全（All-to-All）通訊瓶頸。NVLink 僅在單機架（Scale-up）內極快，跨機架（Scale-out）會因頻寬驟降而嚴重卡頓。</p>
+                    <div class="formula-display">
+                        $$\frac{t_{\text{scale-up}}}{t_{\text{scale-out}}} = \frac{\text{BW}_{\text{scale-out}}}{\text{BW}_{\text{scale-up}}} \cdot \left( 2 \cdot E_{\text{active}} \cdot N_{\text{layer}} \cdot \eta \right) \ge 1$$
+                    </div>
+                    <div class="author-quote" data-i18n="card3_quote">「這就是為什麼 Ilya 曾說：『正如我們現在所知，做過細的 Pipelining 是不明智的。』」— Reiner Pope</div>
+                </div>
+
+                <!-- Card 4 -->
+                <div class="edu-card">
+                    <h3 data-i18n="card4_title">4. 預算均等與 100 倍 Over-training</h3>
+                    <p data-i18n="card4_p">為了優化「預訓練、RL 訓練與推理服務」三者的總花費，三者的算力成本應達到 Heuristic 均衡。由於推理量龐大，為了降低推理成本，在預訓練階段超量訓練大約 100 倍是最合適的選擇。</p>
+                    <div class="formula-display">
+                        $$C_{\text{PT}} \approx C_{\text{RL}} \approx C_{\text{inf}} \implies D_{\text{PT}} \approx \frac{1}{3} D_{\text{inf}} \gg D_{\text{Chinchilla}}$$
+                    </div>
+                    <div class="author-quote" data-i18n="card4_quote">「大模型的最佳預訓練 Token 量，本質上應由該模型在生命週期中將產生的總推理 Token 數決定。」— Reiner Pope</div>
+                </div>
+
+                <!-- Card 5 -->
+                <div class="edu-card">
+                    <h3 data-i18n="card5_title">5. Feistel Cipher 與 可逆網絡 RevNets</h3>
+                    <p data-i18n="card5_p">RevNets 借用了密碼學中 Feistel Cipher 的可逆結構，讓整個 Transformer 的前向傳播在數學上完全可逆。這讓訓練時不需要保留中間 Activation 狀態，在 Backward 時動態反解，極致省下 HBM 空間。</p>
+                    <div class="formula-display">
+                        $$x_{i+1} = y_i + f(x_i), \quad y_{i+1} = x_i \implies y_i = x_{i+1} - f(y_{i+1})$$
+                    </div>
+                    <div class="author-quote" data-i18n="card5_quote">「這與 KV Cache 剛好相反：RevNets 是多花算力來省記憶體；KV Cache 是多用記憶體來省算力。」— Reiner Pope</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer>
+        <p>© 2026 LLM Infra Visualizer. Designed under Advanced Agentic Coding paradigms.</p>
+        <p data-i18n="footer_desc">基於 Reiner Pope x Dwarkesh Patel Blackboard Lecture 訪談錄第一性原理推導與硬體規格建立。</p>
+    </footer>
+
+    <!-- ==================== CHATBOT FLOATING PANEL ==================== -->
+    <div class="chatbot-container">
+        <!-- Chat Trigger Floating Button -->
+        <button class="chat-trigger-btn" id="chat-trigger-btn" aria-label="打開 AI 助手" data-i18n-aria="chat_trigger_btn_aria">
+            <span class="chat-trigger-icon">💬</span>
+            <span class="chat-trigger-badge" id="chat-trigger-badge" style="display: none;">1</span>
+        </button>
+
+        <!-- Chat Window Dialog -->
+        <div class="chat-window hidden" id="chat-window">
+            <!-- Chat Header -->
+            <div class="chat-header">
+                <div class="chat-header-info">
+                    <span class="chat-avatar">🧠</span>
+                    <div>
+                        <h4 data-i18n="chat_title">小Z AI 助手</h4>
+                        <div class="chat-status"><span class="status-dot"></span><span data-i18n="chat_online">在線上 (LLM Infra 專家)</span></div>
+                    </div>
+                </div>
+                <div class="chat-header-actions">
+                    <button class="chat-action-btn" id="chat-settings-btn" title="API 連線設定" data-i18n-title="settings_btn">⚙️</button>
+                    <button class="chat-action-btn" id="chat-close-btn" title="關閉" data-i18n-title="close_btn">✕</button>
+                </div>
+            </div>
+
+            <!-- Collapsible Settings Panel -->
+            <div class="chat-settings-panel collapsed" id="chat-settings-panel">
+                <div class="settings-title" data-i18n="settings_title">API 連線與模型設定</div>
+                <div class="settings-grid">
+                    <div class="settings-field">
+                        <label for="chat-api-endpoint" data-i18n="settings_endpoint">API 端點 (Endpoint)</label>
+                        <input type="text" id="chat-api-endpoint" value="" placeholder="https://api.openai.com/v1">
+                    </div>
+                    <div class="settings-field">
+                        <label for="chat-api-key" data-i18n="settings_key">API 金鑰 (Key)</label>
+                        <input type="password" id="chat-api-key" value="" placeholder="sk-...">
+                    </div>
+                    <div class="settings-field">
+                        <label for="chat-api-model" data-i18n="settings_model">模型 (Model)</label>
+                        <input type="text" id="chat-api-model" value="" placeholder="gpt-4o / deepseek-chat">
+                    </div>
+                </div>
+                <button class="settings-save-btn" id="chat-settings-save-btn" data-i18n="settings_save">儲存連線設定</button>
+            </div>
+
+            <!-- Chat History Messages Area -->
+            <div class="chat-body" id="chat-body">
+                <!-- Initial Welcome Message from Little Z -->
+                <div class="chat-message ai-message">
+                    <p>你好，我是 <strong>小Z</strong>，一個 LLM Infra 專家。歡迎來到 LLM 推論與 Token 經濟學互動教學面板！</p>
+                    <p>你可以問我任何關於<strong>解碼 Roofline 模型、最適 Batch Size 推導、MoE 跨機架通訊瓶頸、KV Cache 多級存儲機會成本折算 或是 100 倍超量預訓練</strong>的硬體物理理論與實踐。</p>
+                    <p>更棒的是，你可以直接命令我：<em>「幫我把 Batch Size 改成 512」</em>，或是<em>「切換到 MoE 跨機架崩潰場景」</em>，我會自動幫你在網頁中完成參數調整！你想從哪個話題開始？</p>
+                </div>
+            </div>
+
+            <!-- Active Tool Status Alert -->
+            <div class="chat-tool-alert hidden" id="chat-tool-alert">
+                <span class="tool-spinner"></span>
+                <span class="tool-alert-text" id="chat-tool-alert-text">正在調整網頁參數...</span>
+            </div>
+
+            <!-- Chat Quick Suggestions bubbles -->
+            <div class="chat-suggestions" id="chat-suggestions">
+                <button class="suggestion-chip">解釋最適 Batch Size 公式</button>
+                <button class="suggestion-chip">什麼是 MoE 的跨機架崩潰？</button>
+                <button class="suggestion-chip">幫我設定為長上下文場景</button>
+            </div>
+
+            <!-- Chat Footer Input Area -->
+            <div class="chat-footer">
+                <textarea id="chat-input" placeholder="詢問小Z物理極限，或讓我設定參數..." rows="1"></textarea>
+                <button id="chat-send-btn" aria-label="發送訊息">
+                    <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Business Logic -->
+    <script src="index.js"></script>
+
+</body>
+</html>

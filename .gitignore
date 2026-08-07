@@ -1,0 +1,8 @@
+# Exclude Reiner raw transcripts & flashcards per user request
+reiner-dwarkesh-transcript.md
+flashcards.md
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
